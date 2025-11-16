@@ -29,8 +29,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
         run: |
-          cd scripts
-          python data_capture.py
+          python scripts/data_capture.py
           
       - name: Commit and push if there are changes
         run: |
