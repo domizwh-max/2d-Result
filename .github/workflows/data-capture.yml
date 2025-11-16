@@ -3,83 +3,9 @@ on:
   schedule:
     - cron: '31 5,10 * * 1-5'
   workflow_dispatch:
-
 jobs:
-  capture-data:
+  capture:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-        
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          java-version: '11'
-          distribution: 'temurin'
-          
-      - name: Create data capture script
-        run: |
-          mkdir -p temp
-          cat > temp/DataCapture.java << 'EOF'
-import java.net.*;
-import java.io.*;
-import java.util.*;
-
-public class DataCapture {
-    public static void main(String[] args) {
-        System.out.println("Starting data capture...");
-        
-        // Get current time in Myanmar
-        TimeZone myanmarTZ = TimeZone.getTimeZone("Asia/Yangon");
-        Calendar calendar = Calendar.getInstance(myanmarTZ);
-        Date now = calendar.getTime();
-        System.out.println("Current time (Myanmar): " + now);
-        
-        // Check if it's time to capture data
-        int hour = calendar.get(Calendar.HOUR_OF_DAY);
-        int minute = calendar.get(Calendar.MINUTE);
-        
-        boolean isMorning = (hour == 12 && minute == 1);
-        boolean isAfternoon = (hour == 16 && minute == 30);
-        
-        if (isMorning || isAfternoon) {
-            System.out.println("Time to capture data: " + (isMorning ? "12:01 PM" : "4:30 PM") + " Myanmar time");
-            
-            // Here you would add the actual data fetching logic
-            // For now, we'll just simulate it
-            System.out.println("Fetching data from SET website...");
-            System.out.println("Fetching data from mylucky2d3d.com...");
-            
-            // Simulate data
-            String setIndex = "1789.25";
-            String value = "12345.67";
-            String twoDResult = "25";
-            
-            System.out.println("Captured SET data - Index: " + setIndex + ", Value: " + value + ", 2D: " + twoDResult);
-            System.out.println("Would save data to Firebase now...");
-        } else {
-            System.out.println("Not scheduled capture time. Skipping data capture.");
-        }
-        
-        System.out.println("Data capture completed.");
-    }
-}
-EOF
-          
-      - name: Compile and run data capture
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
-        run: |
-          cd temp
-          javac DataCapture.java
-          java DataCapture
-          
-      - name: Commit and push if there are changes
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add .
-          git diff --staged --quiet || (git commit -m "Auto-capture data $(date)" && git push) || echo "No changes to commit or push failed"
+    - uses: actions/checkout@v3
+    - run: echo "Data capture job running"
