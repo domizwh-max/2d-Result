@@ -5,137 +5,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  capture-data:
+  capture:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          
-      - name: Install dependencies
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
-          
-      - name: Create and run data capture script
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
-        run: |
-          cat > data_capture.py << 'EOF'
-#!/usr/bin/env python3
+      - run: |
+          cat > script.py << 'EOF'
 import requests
-import datetime
 from bs4 import BeautifulSoup
-
-def get_current_time_myanmar():
-    utc_time = datetime.datetime.utcnow()
-    myanmar_time = utc_time + datetime.timedelta(hours=6, minutes=30)
-    return myanmar_time
-
-def is_twelve_oh_one_pm():
-    myanmar_time = get_current_time_myanmar()
-    return myanmar_time.hour == 12 and myanmar_time.minute == 1
-
-def is_four_thirty_pm():
-    myanmar_time = get_current_time_myanmar()
-    return myanmar_time.hour == 16 and myanmar_time.minute == 30
-
-def get_current_date():
-    myanmar_time = get_current_time_myanmar()
-    return myanmar_time.strftime('%Y-%m-%d')
-
-def fetch_set_data():
-    try:
-        url = "https://www.set.or.th/en/market/index/set/overview"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        set_index_element = soup.select_one(".value.text-white.mb-0.me-2.lh-1.stock-info")
-        value_element = soup.select_one(".d-block.quote-market-cost.border-0 span")
-        
-        set_value = set_index_element.text.strip() if set_index_element else ""
-        value_value = value_element.text.strip() if value_element else ""
-        
-        print(f"SET Data - Index: {set_value}, Value: {value_value}")
-        return (set_value, value_value) if set_value and value_value else None
-    except Exception as e:
-        print(f"Error fetching SET data: {e}")
-        return None
-
-def fetch_modern_internet_data():
-    try:
-        url = "https://mylucky2d3d.com/"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        modern_elements = soup.select(".modIntV")
-        if len(modern_elements) >= 2:
-            modern_value = modern_elements[0].text.strip()
-            internet_value = modern_elements[1].text.strip()
-            print(f"Modern Internet Data - Modern: {modern_value}, Internet: {internet_value}")
-            return (modern_value, internet_value) if modern_value and internet_value else None
-            
-        modern_element = soup.select_one("table tbody tr:nth-child(2) td:nth-child(2)")
-        internet_element = soup.select_one("table tbody tr:nth-child(2) td:nth-child(3)")
-        
-        modern_value = modern_element.text.strip() if modern_element else ""
-        internet_value = internet_element.text.strip() if internet_element else ""
-        
-        return (modern_value, internet_value) if modern_value and internet_value else None
-    except Exception as e:
-        print(f"Error fetching Modern Internet data: {e}")
-        return None
-
-def calculate_2d_result(set_index):
-    try:
-        parts = set_index.split(".")
-        if len(parts) > 1:
-            decimal_part = parts[1]
-            return decimal_part[:2] if len(decimal_part) >= 2 else decimal_part.ljust(2, '0')
-        else:
-            return "--"
-    except Exception as e:
-        print(f"Error calculating 2D result: {e}")
-        return "--"
-
-def main():
-    print("Starting data capture...")
-    myanmar_time = get_current_time_myanmar()
-    current_time_str = myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"Current time (Myanmar): {current_time_str}")
-    
-    set_data = fetch_set_data()
-    if set_data:
-        set_index, value = set_data
-        two_d_result = calculate_2d_result(set_index)
-        print(f"Captured SET data - Index: {set_index}, Value: {value}, 2D: {two_d_result}")
-        
-        date = get_current_date()
-        if is_twelve_oh_one_pm():
-            financial_data = {"setIndex": set_index, "value": value, "twoDResult": two_d_result}
-            print(f"Would save morning data to Firebase: {financial_data}")
-        elif is_four_thirty_pm():
-            financial_data = {"setIndex": set_index, "value": value, "twoDResult": two_d_result}
-            print(f"Would save afternoon data to Firebase: {financial_data}")
-    
-    modern_internet_data = fetch_modern_internet_data()
-    if modern_internet_data:
-        modern, internet = modern_internet_data
-        print(f"Captured Modern Internet data - Modern: {modern}, Internet: {internet}")
-        date = get_current_date()
-        print(f"Would save Modern Internet data to Firebase for date: {date}")
-    
-    print("Data capture completed.")
-
-if __name__ == "__main__":
-    main()
+print("Data capture would run here")
 EOF
-          python data_capture.py
+          python script.py
