@@ -5,7 +5,7 @@ on:
     # 12:01 PM Myanmar = 5:31 AM UTC
     # 4:30 PM Myanmar = 10:00 AM UTC
     - cron: '31 5,10 * * 1-5'
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
 
 jobs:
   capture-data:
@@ -14,28 +14,76 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         
-      - name: Set up Java
-        uses: actions/setup-java@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          java-version: '11'
-          distribution: 'temurin'
+          python-version: '3.9'
           
-      - name: Set up Gradle
-        uses: gradle/gradle-build-action@v2
-        
-      - name: Build data capture script
+      - name: Install dependencies
         run: |
-          cd scripts
-          chmod +x gradlew
-          ./gradlew build
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
           
-      - name: Run data capture
+      - name: Create and run data capture script
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
         run: |
-          cd scripts
-          java -jar build/libs/scripts.jar
+          cat > data_capture.py << 'EOF'
+#!/usr/bin/env python3
+import requests
+from bs4 import BeautifulSoup
+import datetime
+import os
+
+def get_current_time_myanmar():
+    utc_time = datetime.datetime.utcnow()
+    myanmar_time = utc_time + datetime.timedelta(hours=6, minutes=30)
+    return myanmar_time
+
+def is_twelve_oh_one_pm():
+    myanmar_time = get_current_time_myanmar()
+    return myanmar_time.hour == 12 and myanmar_time.minute == 1
+
+def is_four_thirty_pm():
+    myanmar_time = get_current_time_myanmar()
+    return myanmar_time.hour == 16 and myanmar_time.minute == 30
+
+def fetch_set_data():
+    try:
+        url = "https://www.set.or.th/en/market/index/set/overview"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
+        set_index_element = soup.select_one(".value.text-white.mb-0.me-2.lh-1.stock-info")
+        value_element = soup.select_one(".d-block.quote-market-cost.border-0 span")
+        set_value = set_index_element.text.strip() if set_index_element else ""
+        value_value = value_element.text.strip() if value_element else ""
+        print(f"SET Data - Index: {set_value}, Value: {value_value}")
+        return (set_value, value_value) if set_value and value_value else None
+    except Exception as e:
+        print(f"Error fetching SET data: {e}")
+        return None
+
+def main():
+    print("Starting data capture...")
+    myanmar_time = get_current_time_myanmar()
+    print(f"Current time (Myanmar): {myanmar_time}")
+    set_data = fetch_set_data()
+    if set_data:
+        set_index, value = set_data
+        print(f"Captured SET data - Index: {set_index}, Value: {value}")
+        if is_twelve_oh_one_pm():
+            print("Would save morning data to Firebase")
+        elif is_four_thirty_pm():
+            print("Would save afternoon data to Firebase")
+    print("Data capture completed.")
+
+if __name__ == "__main__":
+    main()
+EOF
+          python data_capture.py
           
       - name: Commit and push if there are changes
         run: |
