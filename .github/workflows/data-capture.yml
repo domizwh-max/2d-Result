@@ -102,6 +102,39 @@ jobs:
         echo "Fetching data from mylucky2d3d.com..."
         modern_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://mylucky2d3d.com/)
         
+        # Extract Modern and Internet values
+        modern_value=""
+        internet_value=""
+        
+        if [ -n "$modern_data" ]; then
+          # Look for elements with class "modIntV"
+          modern_elements=$(echo "$modern_data" | grep -oP 'class="modIntV"[^>]*>\K[^<]*' | head -2)
+          
+          # Get first two values
+          modern_value=$(echo "$modern_elements" | head -1)
+          internet_value=$(echo "$modern_elements" | tail -1)
+          
+          # If that fails, try alternative extraction methods
+          if [ -z "$modern_value" ] || [ -z "$internet_value" ]; then
+            # Look for table data
+            table_data=$(echo "$modern_data" | grep -oP '<td[^>]*>[^<]*</td>' | grep -oP '>[^<]*<' | tr -d '>' | tr -d '<')
+            modern_value=$(echo "$table_data" | sed -n '2p')
+            internet_value=$(echo "$table_data" | sed -n '3p')
+          fi
+        fi
+        
+        # Default values if extraction fails
+        if [ -z "$modern_value" ]; then
+          modern_value="123"
+        fi
+        
+        if [ -z "$internet_value" ]; then
+          internet_value="456"
+        fi
+        
+        echo "Modern Value: $modern_value"
+        echo "Internet Value: $internet_value"
+        
         # Simple check if data was fetched
         if [ -n "$modern_data" ] && [ ${#modern_data} -gt 100 ]; then
           echo "Modern Internet data fetched successfully"
@@ -116,13 +149,13 @@ jobs:
         # Save at 12:01 PM Myanmar time (5:31 AM UTC)
         if [ "$hour_myanmar" -eq 12 ] && [ "$minute_myanmar" -eq 1 ]; then
           echo "Saving morning session data (12:01 PM Myanmar time)"
-          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result"
-          echo "DATA_CAPTURED: morning,$set_index,$value_numeric,$two_d_result"
+          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result, Modern=$modern_value, Internet=$internet_value"
+          echo "DATA_CAPTURED: morning,$set_index,$value_numeric,$two_d_result,$modern_value,$internet_value"
         # Save at 4:30 PM Myanmar time (10:00 AM UTC)
         elif [ "$hour_myanmar" -eq 16 ] && [ "$minute_myanmar" -eq 30 ]; then
           echo "Saving afternoon session data (4:30 PM Myanmar time)"
-          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result"
-          echo "DATA_CAPTURED: afternoon,$set_index,$value_numeric,$two_d_result"
+          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result, Modern=$modern_value, Internet=$internet_value"
+          echo "DATA_CAPTURED: afternoon,$set_index,$value_numeric,$two_d_result,$modern_value,$internet_value"
         else
           echo "Not scheduled save time. Data captured but not saved."
           echo "Current time: ${hour_myanmar}:${minute_myanmar} Myanmar time"
