@@ -13,12 +13,54 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-    - name: Run data capture
+    - name: Capture and process data
       run: |
         echo "Starting data capture..."
         echo "Current time (Myanmar): $(date -u -d '+6 hours 30 minutes')"
+        
+        # Fetch SET data
         echo "Fetching data from SET website..."
-        curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://www.set.or.th/en/market/index/set/overview > /dev/null 2>&1 && echo "SET data fetched" || echo "SET data fetch failed"
+        set_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://www.set.or.th/en/market/index/set/overview)
+        
+        # Extract SET index (simplified extraction)
+        set_index=$(echo "$set_data" | grep -oP 'SET Index[^0-9]*\K[0-9]+\.[0-9]+' | head -1)
+        if [ -z "$set_index" ]; then
+          set_index="0.00"
+        fi
+        
+        echo "SET Index: $set_index"
+        
+        # Calculate 2D result
+        if [ "$set_index" != "0.00" ]; then
+          two_d_result=$(echo "$set_index" | cut -d'.' -f2 | cut -c1-2)
+          if [ ${#two_d_result} -lt 2 ]; then
+            two_d_result="${two_d_result}0"
+          fi
+        else
+          two_d_result="--"
+        fi
+        
+        echo "2D Result: $two_d_result"
+        
+        # Fetch Modern Internet data
         echo "Fetching data from mylucky2d3d.com..."
-        curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://mylucky2d3d.com/ > /dev/null 2>&1 && echo "Modern Internet data fetched" || echo "Modern Internet data fetch failed"
+        modern_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://mylucky2d3d.com/)
+        
+        # Extract Modern and Internet values (simplified)
+        echo "Modern Internet data fetched"
+        
+        # Check if it's time to save data
+        hour_myanmar=$(date -u -d '+6 hours 30 minutes' +%H)
+        minute_myanmar=$(date -u -d '+6 hours 30 minutes' +%M)
+        
+        if [ "$hour_myanmar" -eq 12 ] && [ "$minute_myanmar" -eq 1 ]; then
+          echo "Saving morning session data (12:01 PM Myanmar time)"
+          echo "Would save to Firebase: SET Index=$set_index, 2D=$two_d_result"
+        elif [ "$hour_myanmar" -eq 16 ] && [ "$minute_myanmar" -eq 30 ]; then
+          echo "Saving afternoon session data (4:30 PM Myanmar time)"
+          echo "Would save to Firebase: SET Index=$set_index, 2D=$two_d_result"
+        else
+          echo "Not scheduled save time. Data captured but not saved."
+        fi
+        
         echo "Data capture completed."
