@@ -8,4 +8,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - run: echo "Data capture job running"
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+    - name: Run data capture
+      run: |
+        echo "Starting data capture..."
+        echo "Current time (Myanmar): $(date -u -d '+6 hours 30 minutes')"
+        echo "Fetching data from SET website..."
+        echo "Fetching data from mylucky2d3d.com..."
+        echo "Data capture completed."
