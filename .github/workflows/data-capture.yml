@@ -13,10 +13,103 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
+    - name: Create and compile data capture app
+      run: |
+        mkdir -p capture
+        cat > capture/DataCapture.java << 'EOF'
+import java.net.*;
+import java.io.*;
+import java.util.*;
+import java.text.*;
+
+public class DataCapture {
+    public static void main(String[] args) {
+        try {
+            System.out.println("Starting data capture...");
+            
+            // Get current time in Myanmar
+            TimeZone myanmarTZ = TimeZone.getTimeZone("Asia/Yangon");
+            Calendar calendar = Calendar.getInstance(myanmarTZ);
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            sdf.setTimeZone(myanmarTZ);
+            System.out.println("Current time (Myanmar): " + sdf.format(calendar.getTime()));
+            
+            // Check if it's time to capture data
+            int hour = calendar.get(Calendar.HOUR_OF_DAY);
+            int minute = calendar.get(Calendar.MINUTE);
+            
+            boolean isMorning = (hour == 12 && minute == 1);
+            boolean isAfternoon = (hour == 16 && minute == 30);
+            
+            if (isMorning || isAfternoon) {
+                System.out.println("Time to capture data: " + (isMorning ? "12:01 PM" : "4:30 PM") + " Myanmar time");
+                
+                // Fetch data from SET website
+                fetchSETData();
+                
+                // Fetch data from mylucky2d3d.com
+                fetchModernInternetData();
+                
+                System.out.println("Data capture completed successfully.");
+            } else {
+                System.out.println("Not scheduled capture time. Skipping data capture.");
+            }
+        } catch (Exception e) {
+            System.err.println("Error during data capture: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    private static void fetchSETData() {
+        try {
+            System.out.println("Fetching data from SET website...");
+            URL url = new URL("https://www.set.or.th/en/market/index/set/overview");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            String inputLine;
+            StringBuilder content = new StringBuilder();
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
+            in.close();
+            conn.disconnect();
+            
+            String html = content.toString();
+            System.out.println("SET data fetched successfully.");
+        } catch (Exception e) {
+            System.err.println("Error fetching SET data: " + e.getMessage());
+        }
+    }
+    
+    private static void fetchModernInternetData() {
+        try {
+            System.out.println("Fetching data from mylucky2d3d.com...");
+            URL url = new URL("https://mylucky2d3d.com/");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            String inputLine;
+            StringBuilder content = new StringBuilder();
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
+            in.close();
+            conn.disconnect();
+            
+            String html = content.toString();
+            System.out.println("Modern Internet data fetched successfully.");
+        } catch (Exception e) {
+            System.err.println("Error fetching Modern Internet data: " + e.getMessage());
+        }
+    }
+}
+EOF
+        javac capture/DataCapture.java
     - name: Run data capture
       run: |
-        echo "Starting data capture..."
-        echo "Current time (Myanmar): $(date -u -d '+6 hours 30 minutes')"
-        echo "Fetching data from SET website..."
-        echo "Fetching data from mylucky2d3d.com..."
-        echo "Data capture completed."
+        java -cp capture DataCapture
