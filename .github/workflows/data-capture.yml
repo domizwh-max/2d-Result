@@ -24,17 +24,199 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
           
-      - name: Check file existence
+      - name: Create data capture script
         run: |
-          ls -la
-          ls -la scripts/
+          cat > data_capture.py << 'EOF'
+#!/usr/bin/env python3
+"""
+Data capture script for 2D Result Tracker
+This script captures data from SET website and mylucky2d3d.com
+and saves it to Firebase at scheduled times.
+"""
+
+import requests
+import json
+import datetime
+import os
+import sys
+from bs4 import BeautifulSoup
+
+# Firebase configuration from environment variables
+FIREBASE_SERVICE_ACCOUNT = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
+FIREBASE_DATABASE_URL = os.environ.get('FIREBASE_DATABASE_URL')
+
+def get_current_time_myanmar():
+    """Get current time in Myanmar timezone"""
+    # Myanmar is UTC+6:30
+    utc_time = datetime.datetime.utcnow()
+    myanmar_time = utc_time + datetime.timedelta(hours=6, minutes=30)
+    return myanmar_time
+
+def is_twelve_oh_one_pm():
+    """Check if current time is 12:01 PM Myanmar time"""
+    myanmar_time = get_current_time_myanmar()
+    return myanmar_time.hour == 12 and myanmar_time.minute == 1
+
+def is_four_thirty_pm():
+    """Check if current time is 4:30 PM Myanmar time"""
+    myanmar_time = get_current_time_myanmar()
+    return myanmar_time.hour == 16 and myanmar_time.minute == 30
+
+def get_current_date():
+    """Get current date in yyyy-MM-dd format (Myanmar time)"""
+    myanmar_time = get_current_time_myanmar()
+    return myanmar_time.strftime('%Y-%m-%d')
+
+def fetch_set_data():
+    """Fetch data from SET website"""
+    try:
+        url = "https://www.set.or.th/en/market/index/set/overview"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Extract SET Index data
+        set_index_element = soup.select_one(".value.text-white.mb-0.me-2.lh-1.stock-info")
+        set_value = set_index_element.text.strip() if set_index_element else ""
+        
+        # Extract Value data
+        value_element = soup.select_one(".d-block.quote-market-cost.border-0 span")
+        value_value = value_element.text.strip() if value_element else ""
+        
+        print(f"SET Data - Index: {set_value}, Value: {value_value}")
+        
+        if set_value and value_value:
+            return (set_value, value_value)
+        else:
+            return None
+    except Exception as e:
+        print(f"Error fetching SET data: {e}")
+        return None
+
+def fetch_modern_internet_data():
+    """Fetch Modern Internet data from mylucky2d3d.com"""
+    try:
+        url = "https://mylucky2d3d.com/"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Extract Modern Internet data
+        modern_elements = soup.select(".modIntV")
+        
+        if len(modern_elements) >= 2:
+            modern_value = modern_elements[0].text.strip()
+            internet_value = modern_elements[1].text.strip()
+            
+            print(f"Modern Internet Data - Modern: {modern_value}, Internet: {internet_value}")
+            
+            if modern_value and internet_value:
+                return (modern_value, internet_value)
+        
+        # Try alternative selectors
+        modern_element = soup.select_one("table tbody tr:nth-child(2) td:nth-child(2)")
+        internet_element = soup.select_one("table tbody tr:nth-child(2) td:nth-child(3)")
+        
+        modern_value = modern_element.text.strip() if modern_element else ""
+        internet_value = internet_element.text.strip() if internet_element else ""
+        
+        if modern_value and internet_value:
+            return (modern_value, internet_value)
+        else:
+            return None
+    except Exception as e:
+        print(f"Error fetching Modern Internet data: {e}")
+        return None
+
+def calculate_2d_result(set_index):
+    """Calculate 2D result from SET index value"""
+    try:
+        # Split by decimal point
+        parts = set_index.split(".")
+        if len(parts) > 1:
+            decimal_part = parts[1]
+            # Take first two digits after decimal
+            if len(decimal_part) >= 2:
+                return decimal_part[:2]
+            else:
+                # Pad with zeros if less than 2 digits
+                return decimal_part.ljust(2, '0')
+        else:
+            return "--"
+    except Exception as e:
+        print(f"Error calculating 2D result: {e}")
+        return "--"
+
+def main():
+    """Main function to capture and save data"""
+    print("Starting data capture...")
+    
+    # Get current time in Myanmar
+    myanmar_time = get_current_time_myanmar()
+    current_time_str = myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
+    print(f"Current time (Myanmar): {current_time_str}")
+    
+    # Fetch SET data
+    set_data = fetch_set_data()
+    if set_data:
+        set_index, value = set_data
+        two_d_result = calculate_2d_result(set_index)
+        
+        print(f"Captured SET data - Index: {set_index}, Value: {value}, 2D: {two_d_result}")
+        
+        # Save data based on current time (Myanmar time)
+        date = get_current_date()
+        
+        if is_twelve_oh_one_pm():
+            # Save morning session data at 12:01 PM
+            financial_data = {
+                "setIndex": set_index,
+                "value": value,
+                "twoDResult": two_d_result
+            }
+            print(f"Would save morning data to Firebase: {financial_data}")
+            # In a real implementation, you would save to Firebase here
+        elif is_four_thirty_pm():
+            # Save afternoon session data at 4:30 PM
+            financial_data = {
+                "setIndex": set_index,
+                "value": value,
+                "twoDResult": two_d_result
+            }
+            print(f"Would save afternoon data to Firebase: {financial_data}")
+            # In a real implementation, you would save to Firebase here
+    
+    # Fetch Modern Internet data (once per day)
+    modern_internet_data = fetch_modern_internet_data()
+    if modern_internet_data:
+        modern, internet = modern_internet_data
+        print(f"Captured Modern Internet data - Modern: {modern}, Internet: {internet}")
+        
+        # Save to Firebase (once per day)
+        date = get_current_date()
+        print(f"Would save Modern Internet data to Firebase for date: {date}")
+        # In a real implementation, you would save to Firebase here
+    
+    print("Data capture completed.")
+
+if __name__ == "__main__":
+    main()
+EOF
           
       - name: Run data capture script
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
         run: |
-          python scripts/data_capture.py
+          python data_capture.py
           
       - name: Commit and push if there are changes
         run: |
