@@ -1,0 +1,23 @@
+name: Auto Data Capture
+on:
+  schedule:
+    - cron: '31 5,10 * * 1-5'
+  workflow_dispatch:
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+    - run: |
+        cat > script.py << 'EOF'
+import requests
+from bs4 import BeautifulSoup
+print("Data capture would run here")
+EOF
+        python script.py
