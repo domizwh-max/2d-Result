@@ -24,6 +24,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
           
+      - name: Check file existence
+        run: |
+          ls -la
+          ls -la scripts/
+          
       - name: Run data capture script
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
