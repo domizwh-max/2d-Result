@@ -23,43 +23,56 @@ jobs:
         echo "Fetching data from SET website..."
         set_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://www.set.or.th/en/market/index/set/overview)
         
-        # Extract SET Index data
+        # Extract SET Index data - most accurate method
         set_index=""
-        set_index=$(echo "$set_data" | grep -oP 'value text-white mb-0 me-2 lh-1 stock-info[^>]*>\s*\K[0-9,]*\.?[0-9]*' | head -1)
+        
+        # Look for the exact pattern in the HTML
+        set_index=$(echo "$set_data" | grep -oP 'SET Index.*?value text-white mb-0 me-2 lh-1 stock-info[^>]*>\K[0-9,]*\.?[0-9]*' | head -1)
+        
+        # If that doesn't work, try direct class matching
+        if [ -z "$set_index" ]; then
+          set_index=$(echo "$set_data" | grep -oP 'class="value text-white mb-0 me-2 lh-1 stock-info"[^>]*>\s*\K[0-9,]*\.?[0-9]*' | head -1)
+        fi
+        
+        # If still no match, try broader pattern matching
+        if [ -z "$set_index" ]; then
+          set_index=$(echo "$set_data" | grep -oE '>[0-9,]*\.[0-9]+' | head -1 | tr -d '>' | tr -d '<')
+        fi
         
         # Clean up the value (remove commas and whitespace)
         if [ -n "$set_index" ]; then
           set_index=$(echo "$set_index" | tr -d ',' | tr -d ' ' | tr -d '\n' | tr -d '\r')
-        else
-          # Fallback method
-          set_index=$(echo "$set_data" | grep -oE '>[0-9,]*\.[0-9]+<' | head -1 | tr -d '>' | tr -d '<' | tr -d ',')
         fi
         
-        # Default value if extraction fails
+        # Only use default if absolutely no data found
         if [ -z "$set_index" ]; then
-          set_index="1,291.46"
+          set_index="0.00"
         fi
         
         echo "SET Index: $set_index"
         
-        # Extract Value data
-        value_data=""
-        value_data=$(echo "$set_data" | grep -oP 'd-block quote-market-cost border-0[^>]*>.*?<span[^>]*>([^<]*)' | head -1)
+        # Extract Value data - most accurate method
+        value_numeric=""
         
-        # Extract the numeric part from Value data
-        if [ -n "$value_data" ]; then
-          value_numeric=$(echo "$value_data" | grep -oE '[0-9,]*\.[0-9]+' | head -1)
-          if [ -n "$value_numeric" ]; then
-            value_numeric=$(echo "$value_numeric" | tr -d ',' | tr -d ' ' | tr -d '\n' | tr -d '\r')
-          fi
-        else
-          # Fallback method
+        # Look for the exact pattern with Value (M.Baht)
+        value_section=$(echo "$set_data" | grep -A 5 "Value (M.Baht)" | grep -oE '[0-9,]*\.[0-9]+' | head -1)
+        if [ -n "$value_section" ]; then
+          value_numeric=$(echo "$value_section" | tr -d ',' | tr -d ' ')
+        fi
+        
+        # If that doesn't work, try direct span matching
+        if [ -z "$value_numeric" ]; then
+          value_numeric=$(echo "$set_data" | grep -oP 'span[^>]*class="[^"]*ms-2[^"]*"[^>]*>\K[0-9,]*\.?[0-9]*' | head -1 | tr -d ',' | tr -d ' ')
+        fi
+        
+        # If still no match, try broader pattern matching
+        if [ -z "$value_numeric" ]; then
           value_numeric=$(echo "$set_data" | grep -oE 'Value.*?[0-9,]*\.[0-9]+' | grep -oE '[0-9,]*\.[0-9]+' | head -1 | tr -d ',' | tr -d ' ')
         fi
         
-        # Default value if extraction fails
+        # Only use default if absolutely no data found
         if [ -z "$value_numeric" ]; then
-          value_numeric="33,202.91"
+          value_numeric="0.00"
         fi
         
         echo "Value Data: $value_numeric"
@@ -67,7 +80,7 @@ jobs:
         # Calculate 2D result correctly
         # First digit: Very last number of SET Index (including decimal part)
         # Second digit: Last single digit before decimal of Value Data
-        if [ -n "$set_index" ] && [ -n "$value_numeric" ]; then
+        if [ -n "$set_index" ] && [ -n "$value_numeric" ] && [ "$set_index" != "0.00" ] && [ "$value_numeric" != "0.00" ]; then
           # Remove any non-numeric characters except decimal point
           clean_set_index=$(echo "$set_index" | tr -d ' ')
           
@@ -102,34 +115,44 @@ jobs:
         echo "Fetching data from mylucky2d3d.com..."
         modern_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://mylucky2d3d.com/)
         
-        # Extract Modern and Internet values
+        # Extract Modern and Internet values with improved logic
         modern_value=""
         internet_value=""
         
         if [ -n "$modern_data" ]; then
-          # Look for elements with class "modIntV"
-          modern_elements=$(echo "$modern_data" | grep -oP 'class="modIntV"[^>]*>\K[^<]*' | head -2)
+          # Method 1: Look for elements with class "modIntV"
+          mod_int_elements=$(echo "$modern_data" | grep -oP 'class="[^"]*modIntV[^"]*"[^>]*>\K[^<]*' | head -2)
           
-          # Get first two values
-          modern_value=$(echo "$modern_elements" | head -1)
-          internet_value=$(echo "$modern_elements" | tail -1)
+          if [ $(echo "$mod_int_elements" | wc -l) -ge 2 ]; then
+            modern_value=$(echo "$mod_int_elements" | head -1 | tr -d ' ')
+            internet_value=$(echo "$mod_int_elements" | tail -1 | tr -d ' ')
+          fi
           
-          # If that fails, try alternative extraction methods
+          # Method 2: If first method fails, look for table data
           if [ -z "$modern_value" ] || [ -z "$internet_value" ]; then
-            # Look for table data
-            table_data=$(echo "$modern_data" | grep -oP '<td[^>]*>[^<]*</td>' | grep -oP '>[^<]*<' | tr -d '>' | tr -d '<')
-            modern_value=$(echo "$table_data" | sed -n '2p')
-            internet_value=$(echo "$table_data" | sed -n '3p')
+            table_rows=$(echo "$modern_data" | grep -oP '<tr[^>]*>.*?</tr>' | head -3)
+            table_data=$(echo "$table_rows" | grep -oP '<td[^>]*>[^<]*</td>' | grep -oP '>[^<]*<' | tr -d '>' | tr -d '<')
+            
+            # Get second and third values (first row is usually header)
+            modern_value=$(echo "$table_data" | sed -n '2p' | tr -d ' ')
+            internet_value=$(echo "$table_data" | sed -n '3p' | tr -d ' ')
+          fi
+          
+          # Method 3: Look for any numeric values in spans or divs
+          if [ -z "$modern_value" ] || [ -z "$internet_value" ]; then
+            numeric_values=$(echo "$modern_data" | grep -oE '[0-9]+' | head -5)
+            modern_value=$(echo "$numeric_values" | sed -n '1p')
+            internet_value=$(echo "$numeric_values" | sed -n '2p')
           fi
         fi
         
-        # Default values if extraction fails
+        # Only use default if absolutely no data found
         if [ -z "$modern_value" ]; then
-          modern_value="123"
+          modern_value="--"
         fi
         
         if [ -z "$internet_value" ]; then
-          internet_value="456"
+          internet_value="--"
         fi
         
         echo "Modern Value: $modern_value"
