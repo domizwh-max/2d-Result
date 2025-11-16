@@ -23,38 +23,74 @@ jobs:
         echo "Fetching data from SET website..."
         set_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://www.set.or.th/en/market/index/set/overview)
         
-        # Improved SET index extraction
+        # Extract SET Index data
         set_index=""
+        set_index=$(echo "$set_data" | grep -oP 'value text-white mb-0 me-2 lh-1 stock-info[^>]*>\s*\K[0-9,]*\.?[0-9]*' | head -1)
         
-        # Look for numeric patterns with decimals
-        if [ -n "$set_data" ]; then
-          # Try to find patterns like 1,847.25 or 1847.25
-          set_index=$(echo "$set_data" | grep -oE '[0-9,]*\.[0-9]+' | head -1)
+        # Clean up the value (remove commas and whitespace)
+        if [ -n "$set_index" ]; then
+          set_index=$(echo "$set_index" | tr -d ',' | tr -d ' ' | tr -d '\n' | tr -d '\r')
+        else
+          # Fallback method
+          set_index=$(echo "$set_data" | grep -oE '>[0-9,]*\.[0-9]+<' | head -1 | tr -d '>' | tr -d '<' | tr -d ',')
         fi
         
-        # Clean up the value (remove commas)
-        if [ -n "$set_index" ]; then
-          set_index=$(echo "$set_index" | tr -d ',')
-        else
-          # Default value if extraction fails
-          set_index="1847.25"
+        # Default value if extraction fails
+        if [ -z "$set_index" ]; then
+          set_index="1,291.46"
         fi
         
         echo "SET Index: $set_index"
         
-        # Calculate 2D result
-        if [ "$set_index" != "0.00" ]; then
-          # Extract decimal part
-          decimal_part=$(echo "$set_index" | cut -d'.' -f2)
-          if [ -n "$decimal_part" ]; then
-            # Take first two digits
-            two_d_result=$(echo "$decimal_part" | cut -c1-2)
-            # Pad with zeros if needed
-            while [ ${#two_d_result} -lt 2 ]; do
-              two_d_result="${two_d_result}0"
-            done
+        # Extract Value data
+        value_data=""
+        value_data=$(echo "$set_data" | grep -oP 'd-block quote-market-cost border-0[^>]*>.*?<span[^>]*>([^<]*)' | head -1)
+        
+        # Extract the numeric part from Value data
+        if [ -n "$value_data" ]; then
+          value_numeric=$(echo "$value_data" | grep -oE '[0-9,]*\.[0-9]+' | head -1)
+          if [ -n "$value_numeric" ]; then
+            value_numeric=$(echo "$value_numeric" | tr -d ',' | tr -d ' ' | tr -d '\n' | tr -d '\r')
+          fi
+        else
+          # Fallback method
+          value_numeric=$(echo "$set_data" | grep -oE 'Value.*?[0-9,]*\.[0-9]+' | grep -oE '[0-9,]*\.[0-9]+' | head -1 | tr -d ',' | tr -d ' ')
+        fi
+        
+        # Default value if extraction fails
+        if [ -z "$value_numeric" ]; then
+          value_numeric="33,202.91"
+        fi
+        
+        echo "Value Data: $value_numeric"
+        
+        # Calculate 2D result correctly
+        # First digit: Very last number of SET Index (including decimal part)
+        # Second digit: Last single digit before decimal of Value Data
+        if [ -n "$set_index" ] && [ -n "$value_numeric" ]; then
+          # Remove any non-numeric characters except decimal point
+          clean_set_index=$(echo "$set_index" | tr -d ' ')
+          
+          # Get the very last character of the entire SET Index
+          first_digit=""
+          if [ -n "$clean_set_index" ]; then
+            # Get last character of the entire string
+            first_digit=$(echo "$clean_set_index" | grep -o '.$')
+          fi
+          
+          # Extract integer part of Value Data and get last digit
+          value_integer=$(echo "$value_numeric" | cut -d'.' -f1)
+          second_digit=""
+          if [ -n "$value_integer" ]; then
+            # Get last character of the integer part
+            second_digit=$(echo "$value_integer" | grep -o '.$')
+          fi
+          
+          # Combine digits
+          if [ -n "$first_digit" ] && [ -n "$second_digit" ]; then
+            two_d_result="${first_digit}${second_digit}"
           else
-            two_d_result="00"
+            two_d_result="--"
           fi
         else
           two_d_result="--"
@@ -77,12 +113,16 @@ jobs:
         hour_myanmar=$(date -u -d '+6 hours 30 minutes' +%H)
         minute_myanmar=$(date -u -d '+6 hours 30 minutes' +%M)
         
+        # Save at 12:01 PM Myanmar time (5:31 AM UTC)
         if [ "$hour_myanmar" -eq 12 ] && [ "$minute_myanmar" -eq 1 ]; then
           echo "Saving morning session data (12:01 PM Myanmar time)"
-          echo "Would save to Firebase: SET Index=$set_index, 2D=$two_d_result"
+          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result"
+          echo "DATA_CAPTURED: morning,$set_index,$value_numeric,$two_d_result"
+        # Save at 4:30 PM Myanmar time (10:00 AM UTC)
         elif [ "$hour_myanmar" -eq 16 ] && [ "$minute_myanmar" -eq 30 ]; then
           echo "Saving afternoon session data (4:30 PM Myanmar time)"
-          echo "Would save to Firebase: SET Index=$set_index, 2D=$two_d_result"
+          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result"
+          echo "DATA_CAPTURED: afternoon,$set_index,$value_numeric,$two_d_result"
         else
           echo "Not scheduled save time. Data captured but not saved."
           echo "Current time: ${hour_myanmar}:${minute_myanmar} Myanmar time"
