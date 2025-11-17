@@ -1,168 +1,43 @@
 name: Auto Data Capture
 on:
   schedule:
+    # Run at 12:01 PM and 4:30 PM Myanmar time (UTC+6:30)
+    # 12:01 PM Myanmar = 5:31 AM UTC
+    # 4:30 PM Myanmar = 10:00 AM UTC
     - cron: '31 5,10 * * 1-5'
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger
+
 jobs:
-  capture:
+  capture-data:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Java
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-    - name: Capture and process data
-      run: |
-        echo "Starting data capture..."
-        current_time=$(date -u -d '+6 hours 30 minutes' '+%Y-%m-%d %H:%M:%S %Z')
-        echo "Current time (Myanmar): $current_time"
+      - name: Checkout code
+        uses: actions/checkout@v3
         
-        # Fetch SET data
-        echo "Fetching data from SET website..."
-        set_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://www.set.or.th/en/market/index/set/overview)
-        
-        # Extract SET Index data - targeting the exact element
-        set_index=""
-        
-        # Look for the exact div with class "value text-white mb-0 me-2 lh-1 stock-info"
-        set_index=$(echo "$set_data" | grep -oP '<div class="value text-white mb-0 me-2 lh-1 stock-info"[^>]*>\s*\K[0-9,]*\.?[0-9]*' | head -1)
-        
-        # Clean up the value (remove commas and whitespace)
-        if [ -n "$set_index" ]; then
-          set_index=$(echo "$set_index" | tr -d ',' | tr -d ' ' | tr -d '\n' | tr -d '\r')
-        else
-          # Fallback to default if extraction fails
-          set_index="1296.26"
-        fi
-        
-        echo "SET Index: $set_index"
-        
-        # Extract Value data - targeting the exact element
-        value_numeric=""
-        
-        # Look for the exact pattern with Value (M.Baht) and the span with ms-2 class
-        value_data=$(echo "$set_data" | grep -oP 'Value.*?<span class="[^"]*ms-2[^"]*"[^>]*>[^<]*</span>' | head -1)
-        
-        if [ -n "$value_data" ]; then
-          value_numeric=$(echo "$value_data" | grep -oP '<span class="[^"]*ms-2[^"]*"[^>]*>\K[0-9,]*\.?[0-9]*' | head -1)
-          if [ -n "$value_numeric" ]; then
-            value_numeric=$(echo "$value_numeric" | tr -d ',' | tr -d ' ')
-          fi
-        fi
-        
-        # If that fails, try another approach
-        if [ -z "$value_numeric" ]; then
-          value_numeric=$(echo "$set_data" | grep -A 10 "Value (M.Baht)" | grep -oE '[0-9,]*\.[0-9]+' | head -1)
-          if [ -n "$value_numeric" ]; then
-            value_numeric=$(echo "$value_numeric" | tr -d ',' | tr -d ' ')
-          fi
-        fi
-        
-        # Fallback to default if extraction fails
-        if [ -z "$value_numeric" ]; then
-          value_numeric="32021.62"
-        fi
-        
-        echo "Value Data: $value_numeric"
-        
-        # Calculate 2D result correctly
-        # First digit: Last single digit of SET Index (before decimal)
-        # Second digit: Last single digit of Value Data (before decimal)
-        if [ -n "$set_index" ] && [ -n "$value_numeric" ]; then
-          # Extract integer part of SET Index and get last digit
-          set_integer=$(echo "$set_index" | cut -d'.' -f1)
-          first_digit=""
-          if [ -n "$set_integer" ]; then
-            # Get last character of the integer part
-            first_digit=$(echo "$set_integer" | grep -o '.$')
-          fi
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
           
-          # Extract integer part of Value Data and get last digit
-          value_integer=$(echo "$value_numeric" | cut -d'.' -f1)
-          second_digit=""
-          if [ -n "$value_integer" ]; then
-            # Get last character of the integer part
-            second_digit=$(echo "$value_integer" | grep -o '.$')
-          fi
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 supabase
           
-          # Combine digits
-          if [ -n "$first_digit" ] && [ -n "$second_digit" ]; then
-            two_d_result="${first_digit}${second_digit}"
-          else
-            two_d_result="--"
-          fi
-        else
-          two_d_result="--"
-        fi
-        
-        echo "2D Result: $two_d_result"
-        
-        # Fetch Modern Internet data
-        echo "Fetching data from mylucky2d3d.com..."
-        modern_data=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" https://mylucky2d3d.com/)
-        
-        # Extract Modern and Internet values with improved logic
-        modern_value=""
-        internet_value=""
-        
-        if [ -n "$modern_data" ]; then
-          # Method 1: Look for elements with class "modIntV"
-          mod_int_elements=$(echo "$modern_data" | grep -oP 'class="[^"]*modIntV[^"]*"[^>]*>\K[^<]*' | head -2)
+      - name: Run data capture script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          cd scripts
+          python data_capture_supabase.py
           
-          if [ $(echo "$mod_int_elements" | wc -l) -ge 2 ]; then
-            modern_value=$(echo "$mod_int_elements" | head -1 | tr -d ' ')
-            internet_value=$(echo "$mod_int_elements" | tail -1 | tr -d ' ')
-          fi
-          
-          # Method 2: If first method fails, look for table data
-          if [ -z "$modern_value" ] || [ -z "$internet_value" ]; then
-            table_rows=$(echo "$modern_data" | grep -oP '<tr[^>]*>.*?</tr>' | head -3)
-            table_data=$(echo "$table_rows" | grep -oP '<td[^>]*>[^<]*</td>' | grep -oP '>[^<]*<' | tr -d '>' | tr -d '<')
-            
-            # Get second and third values (first row is usually header)
-            modern_value=$(echo "$table_data" | sed -n '2p' | tr -d ' ')
-            internet_value=$(echo "$table_data" | sed -n '3p' | tr -d ' ')
-          fi
-        fi
-        
-        # Fallback to default if extraction fails
-        if [ -z "$modern_value" ]; then
-          modern_value="123"
-        fi
-        
-        if [ -z "$internet_value" ]; then
-          internet_value="456"
-        fi
-        
-        echo "Modern Value: $modern_value"
-        echo "Internet Value: $internet_value"
-        
-        # Simple check if data was fetched
-        if [ -n "$modern_data" ] && [ ${#modern_data} -gt 100 ]; then
-          echo "Modern Internet data fetched successfully"
-        else
-          echo "Modern Internet data fetch may have failed"
-        fi
-        
-        # Check if it's time to save data (Myanmar time)
-        hour_myanmar=$(date -u -d '+6 hours 30 minutes' +%H)
-        minute_myanmar=$(date -u -d '+6 hours 30 minutes' +%M)
-        
-        # Save at 12:01 PM Myanmar time (5:31 AM UTC)
-        if [ "$hour_myanmar" -eq 12 ] && [ "$minute_myanmar" -eq 1 ]; then
-          echo "Saving morning session data (12:01 PM Myanmar time)"
-          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result, Modern=$modern_value, Internet=$internet_value"
-          echo "DATA_CAPTURED: morning,$set_index,$value_numeric,$two_d_result,$modern_value,$internet_value"
-        # Save at 4:30 PM Myanmar time (10:00 AM UTC)
-        elif [ "$hour_myanmar" -eq 16 ] && [ "$minute_myanmar" -eq 30 ]; then
-          echo "Saving afternoon session data (4:30 PM Myanmar time)"
-          echo "Would save to Firebase: SET Index=$set_index, Value=$value_numeric, 2D=$two_d_result, Modern=$modern_value, Internet=$internet_value"
-          echo "DATA_CAPTURED: afternoon,$set_index,$value_numeric,$two_d_result,$modern_value,$internet_value"
-        else
-          echo "Not scheduled save time. Data captured but not saved."
-          echo "Current time: ${hour_myanmar}:${minute_myanmar} Myanmar time"
-        fi
-        
-        echo "Data capture completed."
+      - name: Commit and push if there are changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Auto-capture data $(date)" || echo "No changes to commit"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
