@@ -29,7 +29,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          python scripts/data_capture_supabase.py
+          # Find the script file regardless of directory structure
+          SCRIPT_PATH=$(find . -name "data_capture_supabase.py" -type f | head -n 1)
+          if [ -n "$SCRIPT_PATH" ]; then
+            python "$SCRIPT_PATH"
+          else
+            echo "data_capture_supabase.py not found"
+            exit 1
+          fi
           
       - name: Commit and push if there are changes
         run: |
