@@ -1,0 +1,42 @@
+name: Auto Data Capture
+on:
+  schedule:
+    # Run at 12:01 PM and 4:30 PM Myanmar time (UTC+6:30)
+    # 12:01 PM Myanmar = 5:31 AM UTC
+    # 4:30 PM Myanmar = 10:00 AM UTC
+    - cron: '31 5,10 * * 1-5'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  capture-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 supabase
+          
+      - name: Run data capture script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python scripts/data_capture_supabase.py
+          
+      - name: Commit and push if there are changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Auto-capture data $(date)" || echo "No changes to commit"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
