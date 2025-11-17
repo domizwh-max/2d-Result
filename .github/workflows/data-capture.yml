@@ -28,9 +28,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          cd scripts
-          chmod +x ./gradlew
-          ./gradlew run
+          chmod +x ./scripts/gradlew
+          ./scripts/gradlew -p scripts run
             
       - name: Commit and push if there are changes
         run: |
