@@ -1,5 +1,10 @@
 name: Auto Data Capture
 on:
+  schedule:
+    # Run at 12:01 PM and 4:30 PM Myanmar time (UTC+6:30)
+    # 12:01 PM Myanmar = 5:31 AM UTC
+    # 4:30 PM Myanmar = 10:00 AM UTC
+    - cron: '31 5,10 * * 1-5'
   workflow_dispatch: # Allows manual trigger
 
 jobs:
@@ -8,6 +13,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
         
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -23,61 +31,217 @@ jobs:
         run: |
           cat > data_capture.py << 'EOF'
           #!/usr/bin/env python3
+          """
+          Data capture script for 2D Result Tracker
+          This script captures data from SET website and mylucky2d3d.com
+          and saves it to a JSON file for GitHub Pages.
+          """
+          
           import requests
           import json
           import datetime
           import os
+          import sys
           from bs4 import BeautifulSoup
           
+          def get_current_time_myanmar():
+              """Get current time in Myanmar timezone"""
+              # Myanmar is UTC+6:30
+              utc_time = datetime.datetime.utcnow()
+              myanmar_time = utc_time + datetime.timedelta(hours=6, minutes=30)
+              return myanmar_time
+          
+          def get_current_date():
+              """Get current date in yyyy-MM-dd format (Myanmar time)"""
+              myanmar_time = get_current_time_myanmar()
+              return myanmar_time.strftime('%Y-%m-%d')
+          
           def get_current_datetime_formatted():
-              return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+              """Get current date and time in a readable format"""
+              myanmar_time = get_current_time_myanmar()
+              return myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
           
-          def update_json_data():
-              # Create docs directory if it doesn't exist
-              if not os.path.exists('docs'):
-                  os.makedirs('docs')
-              
-              # Define JSON file path
-              json_file = 'docs/data.json'
-              
-              # Create sample data
-              data = {
-                  "2025-01-01": {
-                      "date": "2025-01-01",
-                      "last_updated": get_current_datetime_formatted(),
-                      "sessions": {
-                          "12:01": {
-                              "set_index": "1,234.56",
-                              "value": "2,345.67",
-                              "two_d_result": "56"
-                          },
-                          "16:30": {
-                              "set_index": "1,235.78",
-                              "value": "2,346.89",
-                              "two_d_result": "78"
-                          }
-                      },
-                      "modern_internet": {
-                          "modern": "123",
-                          "internet": "456"
-                      }
+          def fetch_set_data():
+              """Fetch data from SET website"""
+              try:
+                  url = "https://www.set.or.th/en/market/index/set/overview"
+                  headers = {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                   }
-              }
-              
-              # Save data
-              with open(json_file, 'w') as f:
-                  json.dump(data, f, indent=2)
-              
-              print("JSON data updated")
-              return True
+                  response = requests.get(url, headers=headers, timeout=10)
+                  response.raise_for_status()
+                  
+                  soup = BeautifulSoup(response.content, 'html.parser')
+                  
+                  # Extract SET Index data
+                  set_index_element = soup.select_one(".value.text-white.mb-0.me-2.lh-1.stock-info")
+                  set_value = set_index_element.text.strip() if set_index_element else ""
+                  
+                  # Extract Value data
+                  value_element = soup.select_one(".d-block.quote-market-cost.border-0 span")
+                  value_value = value_element.text.strip() if value_element else ""
+                  
+                  print(f"SET Data - Index: {set_value}, Value: {value_value}")
+                  
+                  if set_value and value_value:
+                      return (set_value, value_value)
+                  else:
+                      return None
+              except Exception as e:
+                  print(f"Error fetching SET data: {e}")
+                  return None
           
-          def main():
-              print("Starting data capture...")
-              update_json_data()
-              print("Data capture completed.")
+          def fetch_modern_internet_data():
+              """Fetch Modern Internet data from mylucky2d3d.com"""
+              try:
+                  url = "https://mylucky2d3d.com/"
+                  headers = {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                  }
+                  response = requests.get(url, headers=headers, timeout=10)
+                  response.raise_for_status()
+                  
+                  soup = BeautifulSoup(response.content, 'html.parser')
+                  
+                  # Extract Modern Internet data for 9:30 AM slot
+                  table930AM = None
+                  for table in soup.select("table"):
+                      time_cell = table.select_one("td.modIntS")
+                      if time_cell and "9:30 AM" in time_cell.text:
+                          table930AM = table
+                          break
+                  
+                  modern930AM = "--"
+                  internet930AM = "--"
+                  
+                  if table930AM:
+                      modern_elements = table930AM.select("td.modIntV")
+                      if len(modern_elements) >= 2:
+                          modern930AM = modern_elements[0].text.strip()
+                          internet930AM = modern_elements[1].text.strip()
+                  
+                  # Extract Modern Internet data for 2:00 PM slot
+                  table200PM = None
+                  for table in soup.select("div.feature-card table"):
+                      time_cell = table.select_one("td.modIntS")
+                      if time_cell and "2:00 PM" in time_cell.text:
+                          table200PM = table
+                          break
+                  
+                  modern200PM = "--"
+                  internet200PM = "--"
+                  
+                  if table200PM:
+                      modern_elements = table200PM.select("td.modIntV")
+                      if len(modern_elements) >= 2:
+                          modern200PM = modern_elements[0].text.strip()
+                          internet200PM = modern_elements[1].text.strip()
+                  
+                  print(f"Modern Internet Data 9:30 AM - Modern: {modern930AM}, Internet: {internet930AM}")
+                  print(f"Modern Internet Data 2:00 PM - Modern: {modern200PM}, Internet: {internet200PM}")
+                  
+                  return {
+                      "930AM": (modern930AM, internet930AM),
+                      "200PM": (modern200PM, internet200PM)
+                  }
+              except Exception as e:
+                  print(f"Error fetching Modern Internet data: {e}")
+                  return {
+                      "930AM": ("--", "--"),
+                      "200PM": ("--", "--")
+                  }
           
-          if __name__ == "__main__":
-              main()
-          EOF
+          def calculate_2d_result(set_index, value):
+              """Calculate 2D result from SET index and Value data
+              First digit: The very last single digit from the SET Index data
+              Second digit: The single digit immediately before the decimal point from the Value data
+              """
+              try:
+                  # First digit: The very last single digit from the SET Index data (1,291.46 → 6)
+                  first_digit = extract_last_digit(set_index)
+                  
+                  # Second digit: The single digit immediately before the decimal point from the Value data (33,202.91 → 2)
+                  second_digit = extract_digit_before_decimal(value)
+                  
+                  return f"{first_digit}{second_digit}"
+              except Exception as e:
+                  print(f"Error calculating 2D result: {e}")
+                  return "--"
           
-          python data_capture.py
+          def extract_last_digit(number):
+              """Extract the very last single digit from a number string
+              For 1,291.46, returns "6"
+              """
+              try:
+                  # Remove any commas from the number
+                  clean_number = number.replace(",", "")
+                  
+                  # Get all digits (remove decimal point)
+                  all_digits = clean_number.replace(".", "")
+                  
+                  # Return the very last digit
+                  if len(all_digits) > 0:
+                      return all_digits[-1]
+                  else:
+                      return "0"
+              except Exception as e:
+                  return "0"
+          
+          def extract_digit_before_decimal(number):
+              """Extract the single digit immediately before the decimal point from a number string
+              For 33,202.91, returns "2"
+              """
+              try:
+                  # Remove any commas from the number
+                  clean_number = number.replace(",", "")
+                  
+                  # Split by decimal point
+                  parts = clean_number.split(".")
+                  if len(parts) > 0:
+                      integer_part = parts[0]
+                      # Return the last digit of the integer part
+                      if len(integer_part) > 0:
+                          return integer_part[-1]
+                      else:
+                          return "0"
+                  else:
+                      return "0"
+              except Exception as e:
+                  return "0"
+          
+          def update_json_data(date, time, set_index, value, two_d_result, modern_internet_data=None):
+              """Update JSON data file for GitHub Pages"""
+              try:
+                  # Create docs directory if it doesn't exist
+                  if not os.path.exists('docs'):
+                      os.makedirs('docs')
+                  
+                  # Define JSON file path
+                  json_file = 'docs/data.json'
+                  
+                  # Load existing data if file exists
+                  data = {}
+                  if os.path.exists(json_file):
+                      with open(json_file, 'r') as f:
+                          data = json.load(f)
+                  
+                  # Update or create entry for current date
+                  if date not in data:
+                      data[date] = {
+                          "date": date,
+                          "last_updated": get_current_datetime_formatted(),
+                          "sessions": {}
+                      }
+                  
+                  # Update last_updated timestamp
+                  data[date]["last_updated"] = get_current_datetime_formatted()
+                  
+                  # Add session data
+                  if time:
+                      data[date]["sessions"][time] = {
+                          "set_index": set_index,
+                          "value": value,
+                          "two_d_result": two_d_result
+                      }
+                  
+                  # Add Modern Internet dat
