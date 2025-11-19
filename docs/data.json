@@ -15,8 +15,14 @@
       }
     },
     "modern_internet": {
-      "modern": "123",
-      "internet": "456"
+      "930AM": {
+        "modern": "123",
+        "internet": "456"
+      },
+      "200PM": {
+        "modern": "789",
+        "internet": "012"
+      }
     }
   }
 }
