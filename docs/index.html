@@ -143,15 +143,41 @@
                         modernHeader.textContent = 'Modern Internet Data';
                         modernDiv.appendChild(modernHeader);
                         
-                        const modernRow = document.createElement('div');
-                        modernRow.className = 'data-row';
-                        modernRow.innerHTML = `<span class="label">Modern:</span> <span class="value">${dateData.modern_internet.modern}</span>`;
-                        modernDiv.appendChild(modernRow);
+                        // Display 9:30 AM data if available
+                        if (dateData.modern_internet['930AM']) {
+                            const time930AM = document.createElement('div');
+                            time930AM.className = 'data-row';
+                            time930AM.innerHTML = `<span class="label">9:30 AM:</span>`;
+                            modernDiv.appendChild(time930AM);
+                            
+                            const modern930AMRow = document.createElement('div');
+                            modern930AMRow.className = 'data-row';
+                            modern930AMRow.innerHTML = `<span class="label">Modern:</span> <span class="value">${dateData.modern_internet['930AM'].modern}</span>`;
+                            modernDiv.appendChild(modern930AMRow);
+                            
+                            const internet930AMRow = document.createElement('div');
+                            internet930AMRow.className = 'data-row';
+                            internet930AMRow.innerHTML = `<span class="label">Internet:</span> <span class="value">${dateData.modern_internet['930AM'].internet}</span>`;
+                            modernDiv.appendChild(internet930AMRow);
+                        }
                         
-                        const internetRow = document.createElement('div');
-                        internetRow.className = 'data-row';
-                        internetRow.innerHTML = `<span class="label">Internet:</span> <span class="value">${dateData.modern_internet.internet}</span>`;
-                        modernDiv.appendChild(internetRow);
+                        // Display 2:00 PM data if available
+                        if (dateData.modern_internet['200PM']) {
+                            const time200PM = document.createElement('div');
+                            time200PM.className = 'data-row';
+                            time200PM.innerHTML = `<span class="label">2:00 PM:</span>`;
+                            modernDiv.appendChild(time200PM);
+                            
+                            const modern200PMRow = document.createElement('div');
+                            modern200PMRow.className = 'data-row';
+                            modern200PMRow.innerHTML = `<span class="label">Modern:</span> <span class="value">${dateData.modern_internet['200PM'].modern}</span>`;
+                            modernDiv.appendChild(modern200PMRow);
+                            
+                            const internet200PMRow = document.createElement('div');
+                            internet200PMRow.className = 'data-row';
+                            internet200PMRow.innerHTML = `<span class="label">Internet:</span> <span class="value">${dateData.modern_internet['200PM'].internet}</span>`;
+                            modernDiv.appendChild(internet200PMRow);
+                        }
                         
                         dateDiv.appendChild(modernDiv);
                     }
