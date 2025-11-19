@@ -1,0 +1,93 @@
+name: Auto Data Capture
+on:
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  capture-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+          
+      - name: Create and run data capture script
+        run: |
+          cat > data_capture.py << 'EOF'
+          #!/usr/bin/env python3
+          import requests
+          import json
+          import datetime
+          import os
+          from bs4 import BeautifulSoup
+          
+          def get_current_datetime_formatted():
+              return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+          
+          def update_json_data():
+              # Create docs directory if it doesn't exist
+              if not os.path.exists('docs'):
+                  os.makedirs('docs')
+              
+              # Define JSON file path
+              json_file = 'docs/data.json'
+              
+              # Create sample data
+              data = {
+                  "2025-01-01": {
+                      "date": "2025-01-01",
+                      "last_updated": get_current_datetime_formatted(),
+                      "sessions": {
+                          "12:01": {
+                              "set_index": "1,234.56",
+                              "value": "2,345.67",
+                              "two_d_result": "56"
+                          },
+                          "16:30": {
+                              "set_index": "1,235.78",
+                              "value": "2,346.89",
+                              "two_d_result": "78"
+                          }
+                      },
+                      "modern_internet": {
+                          "modern": "123",
+                          "internet": "456"
+                      }
+                  }
+              }
+              
+              # Save data
+              with open(json_file, 'w') as f:
+                  json.dump(data, f, indent=2)
+              
+              print("JSON data updated")
+              return True
+          
+          def main():
+              print("Starting data capture...")
+              update_json_data()
+              print("Data capture completed.")
+          
+          if __name__ == "__main__":
+              main()
+          EOF
+          
+          python data_capture.py
+          
+      - name: Commit and push if there are changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Auto-capture data $(date)" || echo "No changes to commit"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
