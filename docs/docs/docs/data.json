@@ -1,0 +1,22 @@
+{
+  "2025-01-01": {
+    "date": "2025-01-01",
+    "last_updated": "2025-01-01 12:01:00",
+    "sessions": {
+      "12:01": {
+        "set_index": "1,234.56",
+        "value": "2,345.67",
+        "two_d_result": "56"
+      },
+      "16:30": {
+        "set_index": "1,235.78",
+        "value": "2,346.89",
+        "two_d_result": "78"
+      }
+    },
+    "modern_internet": {
+      "modern": "123",
+      "internet": "456"
+    }
+  }
+}
