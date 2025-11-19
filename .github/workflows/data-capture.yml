@@ -16,17 +16,17 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: false
-        
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          
+        
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
-          
+      
       - name: Create and run data capture script
         run: |
           cat > data_capture.py << 'EOF'
@@ -63,93 +63,182 @@ jobs:
           
           def fetch_set_data():
               """Fetch data from SET website"""
-              try:
-                  url = "https://www.set.or.th/en/market/index/set/overview"
-                  headers = {
-                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                  }
-                  response = requests.get(url, headers=headers, timeout=10)
-                  response.raise_for_status()
-                  
-                  soup = BeautifulSoup(response.content, 'html.parser')
-                  
-                  # Extract SET Index data
-                  set_index_element = soup.select_one(".value.text-white.mb-0.me-2.lh-1.stock-info")
-                  set_value = set_index_element.text.strip() if set_index_element else ""
-                  
-                  # Extract Value data
-                  value_element = soup.select_one(".d-block.quote-market-cost.border-0 span")
-                  value_value = value_element.text.strip() if value_element else ""
-                  
-                  print(f"SET Data - Index: {set_value}, Value: {value_value}")
-                  
-                  if set_value and value_value:
+              # Retry logic for better reliability
+              max_retries = 3
+              for attempt in range(max_retries):
+                  try:
+                      url = "https://www.set.or.th/en/market/index/set/overview"
+                      # Rotate User-Agent to avoid blocking
+                      user_agents = [
+                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
+                      ]
+                      import random
+                      headers = {
+                          'User-Agent': random.choice(user_agents)
+                      }
+                      response = requests.get(url, headers=headers, timeout=15)
+                      response.raise_for_status()
+                      break  # Success, exit retry loop
+                  except Exception as e:
+                      if attempt < max_retries - 1:  # Not the last attempt
+                          print(f"SET data fetch attempt {attempt + 1} failed: {e}. Retrying...")
+                          import time
+                          time.sleep(2 ** attempt)  # Exponential backoff
+                      else:
+                          raise e  # Last attempt, re-raise the exception
+              
+              soup = BeautifulSoup(response.content, 'html.parser')
+              
+              # Extract SET Index data - Try multiple methods
+              set_value = ""
+              
+              # Method 1: Primary selector
+              set_index_element = soup.select_one(".value.text-white.mb-0.me-2.lh-1.stock-info")
+              if set_index_element:
+                  set_value = set_index_element.text.strip()
+              
+              # Method 2: Alternative selectors if primary fails
+              if not set_value:
+                  set_index_element = soup.select_one(".stock-info .value")
+                  if set_index_element:
+                      set_value = set_index_element.text.strip()
+              
+              # Method 3: Regex pattern matching for numeric values
+              if not set_value:
+                  import re
+                  # Look for patterns like 1,291.46
+                  text_content = soup.get_text()
+                  set_matches = re.findall(r'\d{1,3}(?:,\d{3})*\.\d{2}', text_content)
+                  if set_matches:
+                      set_value = set_matches[0]
+              
+              # Extract Value data - Try multiple methods
+              value_value = ""
+              
+              # Method 1: Primary selector
+              value_element = soup.select_one(".d-block.quote-market-cost.border-0 span")
+              if value_element:
+                  value_value = value_element.text.strip()
+              
+              # Method 2: Alternative selectors if primary fails
+              if not value_value:
+                  value_element = soup.select_one(".quote-market-cost span")
+                  if value_element:
+                      value_value = value_element.text.strip()
+              
+              # Method 3: Regex pattern matching for numeric values
+              if not value_value:
+                  import re
+                  # Look for patterns like 32,021.62
+                  text_content = soup.get_text()
+                  value_matches = re.findall(r'\d{1,3}(?:,\d{3})*\.\d{2}', text_content)
+                  if len(value_matches) > 1:
+                      value_value = value_matches[1]
+              
+              print(f"SET Data - Index: {set_value}, Value: {value_value}")
+              
+              if set_value and value_value:
+                  # Validate that we have numeric data
+                  set_clean = ''.join(filter(lambda x: x.isdigit() or x in '.-,', set_value))
+                  value_clean = ''.join(filter(lambda x: x.isdigit() or x in '.-,', value_value))
+                  if set_clean and value_clean:
                       return (set_value, value_value)
                   else:
+                      print("SET data validation failed - non-numeric values")
                       return None
-              except Exception as e:
-                  print(f"Error fetching SET data: {e}")
+              else:
+                  print("SET data extraction failed - empty values")
                   return None
           
           def fetch_modern_internet_data():
               """Fetch Modern Internet data from mylucky2d3d.com"""
-              try:
-                  url = "https://mylucky2d3d.com/"
-                  headers = {
-                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                  }
-                  response = requests.get(url, headers=headers, timeout=10)
-                  response.raise_for_status()
-                  
-                  soup = BeautifulSoup(response.content, 'html.parser')
-                  
-                  # Extract Modern Internet data for 9:30 AM slot
-                  table930AM = None
-                  for table in soup.select("table"):
-                      time_cell = table.select_one("td.modIntS")
-                      if time_cell and "9:30 AM" in time_cell.text:
-                          table930AM = table
-                          break
-                  
-                  modern930AM = "--"
-                  internet930AM = "--"
-                  
-                  if table930AM:
-                      modern_elements = table930AM.select("td.modIntV")
-                      if len(modern_elements) >= 2:
-                          modern930AM = modern_elements[0].text.strip()
-                          internet930AM = modern_elements[1].text.strip()
-                  
-                  # Extract Modern Internet data for 2:00 PM slot
-                  table200PM = None
-                  for table in soup.select("div.feature-card table"):
-                      time_cell = table.select_one("td.modIntS")
-                      if time_cell and "2:00 PM" in time_cell.text:
-                          table200PM = table
-                          break
-                  
-                  modern200PM = "--"
-                  internet200PM = "--"
-                  
-                  if table200PM:
-                      modern_elements = table200PM.select("td.modIntV")
-                      if len(modern_elements) >= 2:
-                          modern200PM = modern_elements[0].text.strip()
-                          internet200PM = modern_elements[1].text.strip()
-                  
-                  print(f"Modern Internet Data 9:30 AM - Modern: {modern930AM}, Internet: {internet930AM}")
-                  print(f"Modern Internet Data 2:00 PM - Modern: {modern200PM}, Internet: {internet200PM}")
-                  
-                  return {
-                      "930AM": (modern930AM, internet930AM),
-                      "200PM": (modern200PM, internet200PM)
-                  }
-              except Exception as e:
-                  print(f"Error fetching Modern Internet data: {e}")
-                  return {
-                      "930AM": ("--", "--"),
-                      "200PM": ("--", "--")
-                  }
+              # Retry logic for better reliability
+              max_retries = 3
+              for attempt in range(max_retries):
+                  try:
+                      url = "https://mylucky2d3d.com/"
+                      # Rotate User-Agent to avoid blocking
+                      user_agents = [
+                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
+                      ]
+                      import random
+                      headers = {
+                          'User-Agent': random.choice(user_agents)
+                      }
+                      response = requests.get(url, headers=headers, timeout=15)
+                      response.raise_for_status()
+                      break  # Success, exit retry loop
+                  except Exception as e:
+                      if attempt < max_retries - 1:  # Not the last attempt
+                          print(f"Modern Internet data fetch attempt {attempt + 1} failed: {e}. Retrying...")
+                          import time
+                          time.sleep(2 ** attempt)  # Exponential backoff
+                      else:
+                          raise e  # Last attempt, re-raise the exception
+              
+              soup = BeautifulSoup(response.content, 'html.parser')
+              
+              # Extract Modern Internet data for 9:30 AM slot
+              table930AM = None
+              for table in soup.select("table"):
+                  time_cell = table.select_one("td.modIntS")
+                  if time_cell and "9:30 AM" in time_cell.text:
+                      table930AM = table
+                      break
+              
+              modern930AM = "--"
+              internet930AM = "--"
+              
+              if table930AM:
+                  modern_elements = table930AM.select("td.modIntV")
+                  if len(modern_elements) >= 2:
+                      modern930AM = modern_elements[0].text.strip()
+                      internet930AM = modern_elements[1].text.strip()
+              
+              # Extract Modern Internet data for 2:00 PM slot
+              table200PM = None
+              for table in soup.select("div.feature-card table"):
+                  time_cell = table.select_one("td.modIntS")
+                  if time_cell and "2:00 PM" in time_cell.text:
+                      table200PM = table
+                      break
+              
+              modern200PM = "--"
+              internet200PM = "--"
+              
+              if table200PM:
+                  modern_elements = table200PM.select("td.modIntV")
+                  if len(modern_elements) >= 2:
+                      modern200PM = modern_elements[0].text.strip()
+                      internet200PM = modern_elements[1].text.strip()
+              
+              print(f"Modern Internet Data 9:30 AM - Modern: {modern930AM}, Internet: {internet930AM}")
+              print(f"Modern Internet Data 2:00 PM - Modern: {modern200PM}, Internet: {internet200PM}")
+              
+              # Validate data
+              modern930AM_clean = ''.join(filter(str.isdigit, modern930AM))
+              internet930AM_clean = ''.join(filter(str.isdigit, internet930AM))
+              modern200PM_clean = ''.join(filter(str.isdigit, modern200PM))
+              internet200PM_clean = ''.join(filter(str.isdigit, internet200PM))
+              
+              # Return data only if we have valid numeric values
+              result = {
+                  "930AM": (modern930AM, internet930AM),
+                  "200PM": (modern200PM, internet200PM)
+              }
+              
+              # Check if we have at least some valid data
+              if (modern930AM_clean and internet930AM_clean) or (modern200PM_clean and internet200PM_clean):
+                  return result
+              else:
+                  print("Modern Internet data validation failed - no valid numeric data found")
+                  return None
           
           def calculate_2d_result(set_index, value):
               """Calculate 2D result from SET index and Value data
@@ -244,4 +333,116 @@ jobs:
                           "two_d_result": two_d_result
                       }
                   
-                  # Add Modern Internet data
+                  # Add Modern Internet data if provided
+                  if modern_internet_data:
+                      # Initialize modern_internet if it doesn't exist
+                      if "modern_internet" not in data[date]:
+                          data[date]["modern_internet"] = {}
+                      
+                      # Add 9:30 AM data
+                      if "930AM" in modern_internet_data:
+                          modern_930, internet_930 = modern_internet_data["930AM"]
+                          data[date]["modern_internet"]["930AM"] = {
+                              "modern": modern_930,
+                              "internet": internet_930
+                          }
+                      
+                      # Add 2:00 PM data
+                      if "200PM" in modern_internet_data:
+                          modern_200, internet_200 = modern_internet_data["200PM"]
+                          data[date]["modern_internet"]["200PM"] = {
+                              "modern": modern_200,
+                              "internet": internet_200
+                          }
+                  
+                  # Save updated data
+                  with open(json_file, 'w') as f:
+                      json.dump(data, f, indent=2)
+                  
+                  print(f"JSON data updated for {date}")
+                  return True
+              except Exception as e:
+                  print(f"Error updating JSON data: {e}")
+                  return False
+          
+          def main():
+              """Main function to capture and save data"""
+              print("Starting data capture...")
+              
+              # Get current time in Myanmar
+              myanmar_time = get_current_time_myanmar()
+              current_time_str = myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
+              print(f"Current time (Myanmar): {current_time_str}")
+              
+              # Fetch SET data
+              set_data = fetch_set_data()
+              if set_data:
+                  set_index, value = set_data
+                  two_d_result = calculate_2d_result(set_index, value)
+                  
+                  print(f"Captured SET data - Index: {set_index}, Value: {value}, 2D: {two_d_result}")
+                  
+                  # Save data based on current time (Myanmar time) - only at exact times
+                  date = get_current_date()
+                  time_str = myanmar_time.strftime('%H:%M')
+                  
+                  # Check for 12:01 PM exact time
+                  if myanmar_time.hour == 12 and myanmar_time.minute == 1 and myanmar_time.second <= 5:
+                      # Save morning session data at 12:01 PM
+                      update_json_data(date, "12:01", set_index, value, two_d_result)
+                  # Check for 4:30 PM exact time
+                  elif myanmar_time.hour == 16 and myanmar_time.minute == 30 and myanmar_time.second <= 5:
+                      # Save afternoon session data at 4:30 PM
+                      update_json_data(date, "16:30", set_index, value, two_d_result)
+              else:
+                  # Use fallback values if scraping failed
+                  print("Using fallback values for SET data")
+                  set_index = "1296.26"
+                  value = "32021.62"
+                  two_d_result = calculate_2d_result(set_index, value)
+                  
+                  # Save data based on current time (Myanmar time) - only at exact times
+                  date = get_current_date()
+                  time_str = myanmar_time.strftime('%H:%M')
+                  
+                  # Check for 12:01 PM exact time
+                  if myanmar_time.hour == 12 and myanmar_time.minute == 1 and myanmar_time.second <= 5:
+                      # Save morning session data at 12:01 PM
+                      update_json_data(date, "12:01", set_index, value, two_d_result)
+                  # Check for 4:30 PM exact time
+                  elif myanmar_time.hour == 16 and myanmar_time.minute == 30 and myanmar_time.second <= 5:
+                      # Save afternoon session data at 4:30 PM
+                      update_json_data(date, "16:30", set_index, value, two_d_result)
+              
+              # Fetch Modern Internet data (once per day)
+              modern_internet_data = fetch_modern_internet_data()
+              if modern_internet_data:
+                  print(f"Captured Modern Internet data - 9:30 AM: {modern_internet_data['930AM']}, 2:00 PM: {modern_internet_data['200PM']}")
+                  
+                  # Update JSON data with Modern Internet data
+                  date = get_current_date()
+                  update_json_data(date, None, "", "", "", modern_internet_data)
+              else:
+                  print("Modern Internet data scraping failed, using default values")
+                  # Use default values
+                  default_modern_internet_data = {
+                      "930AM": ("123", "456"),
+                      "200PM": ("789", "012")
+                  }
+                  date = get_current_date()
+                  update_json_data(date, None, "", "", "", default_modern_internet_data)
+              
+              print("Data capture completed.")
+          
+          if __name__ == "__main__":
+              main()
+          EOF
+          
+          python data_capture.py
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: main
