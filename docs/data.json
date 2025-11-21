@@ -1,0 +1,54 @@
+{
+  "2025-11-20": {
+    "date": "2025-11-20",
+    "last_updated": "2025-11-20 16:30:00",
+    "sessions": {
+      "12:01": {
+        "set_index": "1,296.26",
+        "value": "32,021.62",
+        "two_d_result": "62"
+      },
+      "16:30": {
+        "set_index": "1,298.45",
+        "value": "32,150.78",
+        "two_d_result": "57"
+      }
+    },
+    "modern_internet": {
+      "930AM": {
+        "modern": "45",
+        "internet": "78"
+      },
+      "200PM": {
+        "modern": "23",
+        "internet": "67"
+      }
+    }
+  },
+  "2025-11-19": {
+    "date": "2025-11-19",
+    "last_updated": "2025-11-19 16:30:00",
+    "sessions": {
+      "12:01": {
+        "set_index": "1,291.46",
+        "value": "31,890.34",
+        "two_d_result": "69"
+      },
+      "16:30": {
+        "set_index": "1,295.72",
+        "value": "32,010.56",
+        "two_d_result": "20"
+      }
+    },
+    "modern_internet": {
+      "930AM": {
+        "modern": "12",
+        "internet": "34"
+      },
+      "200PM": {
+        "modern": "56",
+        "internet": "89"
+      }
+    }
+  }
+}
