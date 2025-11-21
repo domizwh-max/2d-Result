@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: false
+          persist-credentials: true # Changed to true to allow pushing
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -425,10 +425,15 @@ jobs:
           
           python data_capture.py
       
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           personal_token: ${{ secrets.GH_PAT }}
           publish_dir: ./docs
-          publish_branch: main
-
+          publish_branch: gh-pages  # Changed to gh-pages branch
+          force_orphan: true  # Force orphan branch for clean deployment
