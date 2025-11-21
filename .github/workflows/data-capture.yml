@@ -16,8 +16,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true # Changed to true to allow pushing
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: true
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -433,7 +433,7 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
-          personal_token: ${{ secrets.GH_PAT }}
+          github_token: ${{ secrets.GH_PAT }}
           publish_dir: ./docs
-          publish_branch: gh-pages  # Changed to gh-pages branch
-          force_orphan: true  # Force orphan branch for clean deployment
+          publish_branch: gh-pages
+          force_orphan: true
