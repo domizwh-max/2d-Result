@@ -1,12 +1,9 @@
 name: Auto Data Capture
 on:
   schedule:
-    # Run at 12:01 PM and 4:30 PM Myanmar time (UTC+6:30)
-    # 12:01 PM Myanmar = 5:31 AM UTC
-    # 4:30 PM Myanmar = 10:00 AM UTC
-    # Also run at 5:50 PM Myanmar for Modern Internet data = 11:20 AM UTC
-    - cron: '31 5,10 * * 1-5'
-    - cron: '20 11 * * 1-5'
+    # Run every minute during market hours to ensure exact time capture
+    # 9:00 AM to 6:00 PM Myanmar time (2:30 AM to 11:30 AM UTC)
+    - cron: '* 2-11 * * 1-5'
   workflow_dispatch: # Allows manual trigger
 
 jobs:
@@ -36,7 +33,7 @@ jobs:
           """
           Data capture script for 2D Result Tracker
           This script captures data from SET website and mylucky2d3d.com
-          and saves it to Firebase Realtime Database.
+          and saves it to Firebase Realtime Database at exact times.
           """
           
           import requests
@@ -79,22 +76,22 @@ jobs:
               return myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
           
           def is_morning_capture_time():
-              """Check if current time is around 12:01 PM Myanmar time (within 30 minutes)"""
+              """Check if current time is exactly 12:01 PM Myanmar time"""
               myanmar_time = get_current_time_myanmar()
-              # Allow capture between 11:31 AM and 12:31 PM Myanmar time
-              return myanmar_time.hour == 12 or (myanmar_time.hour == 11 and myanmar_time.minute >= 31)
+              # Check for exact time: 12:01 PM Myanmar time
+              return myanmar_time.hour == 12 and myanmar_time.minute == 1
           
           def is_afternoon_capture_time():
-              """Check if current time is around 4:30 PM Myanmar time (within 30 minutes)"""
+              """Check if current time is exactly 4:30 PM Myanmar time"""
               myanmar_time = get_current_time_myanmar()
-              # Allow capture between 4:00 PM and 5:00 PM Myanmar time
-              return myanmar_time.hour == 16 and myanmar_time.minute >= 0
+              # Check for exact time: 4:30 PM Myanmar time
+              return myanmar_time.hour == 16 and myanmar_time.minute == 30
           
           def is_modern_internet_time():
-              """Check if current time is around 5:50 PM Myanmar time (within 30 minutes)"""
+              """Check if current time is exactly 5:50 PM Myanmar time"""
               myanmar_time = get_current_time_myanmar()
-              # Allow capture between 5:20 PM and 6:20 PM Myanmar time
-              return myanmar_time.hour == 17 or (myanmar_time.hour == 18 and myanmar_time.minute <= 20)
+              # Check for exact time: 5:50 PM Myanmar time
+              return myanmar_time.hour == 17 and myanmar_time.minute == 50
           
           def fetch_set_data():
               """Fetch data from SET website using exact HTML elements"""
@@ -356,7 +353,7 @@ jobs:
               current_time_str = myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
               print(f"Current time (Myanmar): {current_time_str}")
               
-              # Fetch SET data during morning or afternoon capture windows
+              # Fetch SET data at exactly 12:01 PM and 4:30 PM
               if is_morning_capture_time() or is_afternoon_capture_time():
                   set_data = fetch_set_data()
                   if set_data:
@@ -368,11 +365,11 @@ jobs:
                       # Save data based on current time (Myanmar time)
                       date = get_current_date()
                       
-                      # Check for morning capture window
+                      # Check for morning capture time (12:01 PM)
                       if is_morning_capture_time():
                           # Save morning session data
                           update_firebase_data(date, "12:01", set_index, value, two_d_result)
-                      # Check for afternoon capture window
+                      # Check for afternoon capture time (4:30 PM)
                       elif is_afternoon_capture_time():
                           # Save afternoon session data
                           update_firebase_data(date, "16:30", set_index, value, two_d_result)
@@ -381,7 +378,7 @@ jobs:
                       # Use fallback values
                       date = get_current_date()
                       
-                      # Check for morning capture window
+                      # Check for morning capture time (12:01 PM)
                       if is_morning_capture_time():
                           # Use fallback values for SET data
                           print("Using fallback values for SET data at morning time")
@@ -389,7 +386,7 @@ jobs:
                           value = "32021.62"
                           two_d_result = calculate_2d_result(set_index, value)
                           update_firebase_data(date, "12:01", set_index, value, two_d_result)
-                      # Check for afternoon capture window
+                      # Check for afternoon capture time (4:30 PM)
                       elif is_afternoon_capture_time():
                           # Use fallback values for SET data
                           print("Using fallback values for SET data at afternoon time")
@@ -398,9 +395,9 @@ jobs:
                           two_d_result = calculate_2d_result(set_index, value)
                           update_firebase_data(date, "16:30", set_index, value, two_d_result)
               else:
-                  print("Not the time to capture SET data (outside 11:31 AM-12:31 PM or 4:00 PM-5:00 PM Myanmar time)")
+                  print("Not the time to capture SET data (not exactly 12:01 PM or 4:30 PM Myanmar time)")
               
-              # Fetch Modern Internet data during its capture window
+              # Fetch Modern Internet data at exactly 5:50 PM
               if is_modern_internet_time():
                   modern_internet_data = fetch_modern_internet_data()
                   if modern_internet_data:
@@ -419,7 +416,7 @@ jobs:
                       date = get_current_date()
                       update_firebase_data(date, None, "", "", "", default_modern_internet_data)
               else:
-                  print("Not the time to capture Modern Internet data (outside 5:20 PM-6:20 PM Myanmar time)")
+                  print("Not the time to capture Modern Internet data (not exactly 5:50 PM Myanmar time)")
               
               print("Data capture completed.")
           
