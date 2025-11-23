@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
+          pip install requests beautifulsoup4 pyrebase4
       
       - name: Create and run data capture script
         run: |
@@ -36,7 +36,7 @@ jobs:
           """
           Data capture script for 2D Result Tracker
           This script captures data from SET website and mylucky2d3d.com
-          and saves it to a JSON file for GitHub Pages.
+          and saves it to Firebase Realtime Database.
           """
           
           import requests
@@ -45,6 +45,21 @@ jobs:
           import os
           import sys
           from bs4 import BeautifulSoup
+          import pyrebase
+          
+          # Firebase configuration
+          firebase_config = {
+              "apiKey": "AIzaSyC9A0qGfYPEmSp8po4KwUewuVwNQ546B9I",
+              "authDomain": "twodresult.firebaseapp.com",
+              "databaseURL": "https://twodresult-default-rtdb.firebaseio.com",
+              "projectId": "twodresult",
+              "storageBucket": "twodresult.firebasestorage.app",
+              "messagingSenderId": "127171718202",
+              "appId": "1:127171718202:android:7eac020521d8ad1dc29903"
+          }
+          
+          firebase = pyrebase.initialize_app(firebase_config)
+          db = firebase.database()
           
           def get_current_time_myanmar():
               """Get current time in Myanmar timezone"""
@@ -276,36 +291,26 @@ jobs:
               except Exception as e:
                   return "0"
           
-          def update_json_data(date, time, set_index, value, two_d_result, modern_internet_data=None):
-              """Update JSON data file for GitHub Pages"""
+          def update_firebase_data(date, time, set_index, value, two_d_result, modern_internet_data=None):
+              """Update Firebase Realtime Database with new data"""
               try:
-                  # Create docs directory if it doesn't exist
-                  if not os.path.exists('docs'):
-                      os.makedirs('docs')
+                  # Get existing data from Firebase
+                  existing_data = db.child(date).get().val()
                   
-                  # Define JSON file path
-                  json_file = 'docs/data.json'
-                  
-                  # Load existing data if file exists
-                  data = {}
-                  if os.path.exists(json_file):
-                      with open(json_file, 'r') as f:
-                          data = json.load(f)
-                  
-                  # Update or create entry for current date
-                  if date not in data:
-                      data[date] = {
+                  # Initialize data structure if it doesn't exist
+                  if existing_data is None:
+                      data = {
                           "date": date,
                           "last_updated": get_current_datetime_formatted(),
                           "sessions": {}
                       }
-                  
-                  # Update last_updated timestamp
-                  data[date]["last_updated"] = get_current_datetime_formatted()
+                  else:
+                      data = existing_data
+                      data["last_updated"] = get_current_datetime_formatted()
                   
                   # Add session data
                   if time:
-                      data[date]["sessions"][time] = {
+                      data["sessions"][time] = {
                           "set_index": set_index,
                           "value": value,
                           "two_d_result": two_d_result
@@ -314,13 +319,13 @@ jobs:
                   # Add Modern Internet data if provided
                   if modern_internet_data:
                       # Initialize modern_internet if it doesn't exist
-                      if "modern_internet" not in data[date]:
-                          data[date]["modern_internet"] = {}
+                      if "modern_internet" not in data:
+                          data["modern_internet"] = {}
                       
                       # Add 9:30 AM data
                       if "930AM" in modern_internet_data:
                           modern_930, internet_930 = modern_internet_data["930AM"]
-                          data[date]["modern_internet"]["930AM"] = {
+                          data["modern_internet"]["930AM"] = {
                               "modern": modern_930,
                               "internet": internet_930
                           }
@@ -328,19 +333,18 @@ jobs:
                       # Add 2:00 PM data
                       if "200PM" in modern_internet_data:
                           modern_200, internet_200 = modern_internet_data["200PM"]
-                          data[date]["modern_internet"]["200PM"] = {
+                          data["modern_internet"]["200PM"] = {
                               "modern": modern_200,
                               "internet": internet_200
                           }
                   
-                  # Save updated data
-                  with open(json_file, 'w') as f:
-                      json.dump(data, f, indent=2)
+                  # Save updated data to Firebase
+                  db.child(date).set(data)
                   
-                  print(f"JSON data updated for {date}")
+                  print(f"Firebase data updated for {date}")
                   return True
               except Exception as e:
-                  print(f"Error updating JSON data: {e}")
+                  print(f"Error updating Firebase data: {e}")
                   return False
           
           def main():
@@ -367,11 +371,11 @@ jobs:
                       # Check for morning capture window
                       if is_morning_capture_time():
                           # Save morning session data
-                          update_json_data(date, "12:01", set_index, value, two_d_result)
+                          update_firebase_data(date, "12:01", set_index, value, two_d_result)
                       # Check for afternoon capture window
                       elif is_afternoon_capture_time():
                           # Save afternoon session data
-                          update_json_data(date, "16:30", set_index, value, two_d_result)
+                          update_firebase_data(date, "16:30", set_index, value, two_d_result)
                   else:
                       print("SET data scraping failed, using fallback values")
                       # Use fallback values
@@ -384,7 +388,7 @@ jobs:
                           set_index = "1296.26"
                           value = "32021.62"
                           two_d_result = calculate_2d_result(set_index, value)
-                          update_json_data(date, "12:01", set_index, value, two_d_result)
+                          update_firebase_data(date, "12:01", set_index, value, two_d_result)
                       # Check for afternoon capture window
                       elif is_afternoon_capture_time():
                           # Use fallback values for SET data
@@ -392,7 +396,7 @@ jobs:
                           set_index = "1296.26"
                           value = "32021.62"
                           two_d_result = calculate_2d_result(set_index, value)
-                          update_json_data(date, "16:30", set_index, value, two_d_result)
+                          update_firebase_data(date, "16:30", set_index, value, two_d_result)
               else:
                   print("Not the time to capture SET data (outside 11:31 AM-12:31 PM or 4:00 PM-5:00 PM Myanmar time)")
               
@@ -402,9 +406,9 @@ jobs:
                   if modern_internet_data:
                       print(f"Captured Modern Internet data - 9:30 AM: {modern_internet_data['930AM']}, 2:00 PM: {modern_internet_data['200PM']}")
                       
-                      # Update JSON data with Modern Internet data
+                      # Update Firebase data with Modern Internet data
                       date = get_current_date()
-                      update_json_data(date, None, "", "", "", modern_internet_data)
+                      update_firebase_data(date, None, "", "", "", modern_internet_data)
                   else:
                       print("Modern Internet data scraping failed, using default values")
                       # Use default values
@@ -413,7 +417,7 @@ jobs:
                           "200PM": ("789", "012")
                       }
                       date = get_current_date()
-                      update_json_data(date, None, "", "", "", default_modern_internet_data)
+                      update_firebase_data(date, None, "", "", "", default_modern_internet_data)
               else:
                   print("Not the time to capture Modern Internet data (outside 5:20 PM-6:20 PM Myanmar time)")
               
@@ -424,13 +428,3 @@ jobs:
           EOF
           
           python data_capture.py
-      
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GH_PAT }}
-          publish_dir: ./docs
-          publish_branch: gh-pages
-          force_orphan: true
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
