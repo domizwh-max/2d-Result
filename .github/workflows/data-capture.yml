@@ -1,9 +1,13 @@
 name: Auto Data Capture
 on:
   schedule:
-    # Run every minute during market hours to ensure exact time capture
-    # 9:00 AM to 6:00 PM Myanmar time (2:30 AM to 11:30 AM UTC)
-    - cron: '* 2-11 * * 1-5'
+    # Run at exact times for data capture (Myanmar time):
+    # 12:01 PM Myanmar time = 5:31 AM UTC (SET market data)
+    # 4:30 PM Myanmar time = 10:00 AM UTC (SET market data)
+    # 5:50 PM Myanmar time = 11:20 AM UTC (Modern Internet data)
+    - cron: '31 5 * * 1-5'
+    - cron: '0 10 * * 1-5'
+    - cron: '20 11 * * 1-5'
   workflow_dispatch: # Allows manual trigger
 
 jobs:
@@ -26,6 +30,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 pyrebase4
       
+      - name: Create Firebase service account key
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > firebase-service-account.json
+          cat firebase-service-account.json
+      
       - name: Create and run data capture script
         run: |
           cat > data_capture.py << 'EOF'
@@ -33,7 +42,10 @@ jobs:
           """
           Data capture script for 2D Result Tracker
           This script captures data from SET website and mylucky2d3d.com
-          and saves it to Firebase Realtime Database at exact times.
+          and saves it to Firebase Realtime Database at exact times:
+          - 12:01 PM Myanmar time (SET market data)
+          - 4:30 PM Myanmar time (SET market data)
+          - 5:50 PM Myanmar time (Modern Internet data)
           """
           
           import requests
@@ -52,11 +64,24 @@ jobs:
               "projectId": "twodresult",
               "storageBucket": "twodresult.firebasestorage.app",
               "messagingSenderId": "127171718202",
-              "appId": "1:127171718202:android:7eac020521d8ad1dc29903"
+              "appId": "1:127171718202:android:7eac020521d8ad1dc29903",
+              "serviceAccount": "firebase-service-account.json"
           }
           
           firebase = pyrebase.initialize_app(firebase_config)
+          # Authenticate with service account
           db = firebase.database()
+          
+          # Initialize Firebase authentication
+          auth = firebase.auth()
+          
+          # Try to authenticate with service account
+          try:
+              # Service account authentication is handled automatically by Pyrebase
+              # when serviceAccount is specified in config
+              pass
+          except Exception as e:
+              print(f"Firebase authentication warning: {e}")
           
           def get_current_time_myanmar():
               """Get current time in Myanmar timezone"""
@@ -140,11 +165,12 @@ jobs:
               
               print(f"SET Data - Index: '{set_value}', Value: '{value_value}'")
               
-              if set_value and value_value:
+              # Return data only if both values are successfully extracted
+              if set_value and value_value and set_value != "1296.26" and value_value != "32021.62":
                   print("SET data capture: SUCCESS")
                   return (set_value, value_value)
               else:
-                  print("SET data capture: FAILED - No data found")
+                  print("SET data capture: FAILED - No data found or using fallback values")
                   return None
           
           def fetch_modern_internet_data():
@@ -342,7 +368,17 @@ jobs:
                   return True
               except Exception as e:
                   print(f"Error updating Firebase data: {e}")
-                  return False
+                  # Try again with re-authentication
+                  try:
+                      # Re-initialize Firebase connection
+                      firebase = pyrebase.initialize_app(firebase_config)
+                      db = firebase.database()
+                      db.child(date).set(data)
+                      print(f"Firebase data updated for {date} (retry)")
+                      return True
+                  except Exception as e2:
+                      print(f"Error updating Firebase data on retry: {e2}")
+                      return False
           
           def main():
               """Main function to capture and save data"""
