@@ -54,6 +54,11 @@ jobs:
           python -c "import json; json.load(open('firebase-service-account.json'))"
           echo "Firebase service account key created successfully"
       
+      - name: Debug - Check Firebase service account file
+        run: |
+          echo "Firebase service account file size: $(wc -c < firebase-service-account.json)"
+          echo "Firebase service account file first 100 chars: $(head -c 100 firebase-service-account.json)"
+      
       - name: Create and run data capture script
         run: |
           cat > data_capture.py << 'EOF'
@@ -87,6 +92,7 @@ jobs:
               "serviceAccount": "firebase-service-account.json"
           }
           
+          print("DEBUG: Initializing Firebase with config")
           firebase = pyrebase.initialize_app(firebase_config)
           # Authenticate with service account
           db = firebase.database()
@@ -348,22 +354,32 @@ jobs:
           def update_firebase_data(date, time, set_index, value, two_d_result, modern_internet_data=None):
               """Update Firebase Realtime Database with new data"""
               try:
+                  print(f"DEBUG: Attempting to update Firebase data for date: {date}")
+                  print(f"DEBUG: Time: {time}, SET Index: {set_index}, Value: {value}, 2D Result: {two_d_result}")
+                  if modern_internet_data:
+                      print(f"DEBUG: Modern Internet Data: {modern_internet_data}")
+                  
                   # Get existing data from Firebase
+                  print("DEBUG: Getting existing data from Firebase")
                   existing_data = db.child(date).get().val()
+                  print(f"DEBUG: Existing data: {existing_data}")
                   
                   # Initialize data structure if it doesn't exist
                   if existing_data is None:
+                      print("DEBUG: No existing data found, creating new structure")
                       data = {
                           "date": date,
                           "last_updated": get_current_datetime_formatted(),
                           "sessions": {}
                       }
                   else:
+                      print("DEBUG: Existing data found, updating last_updated")
                       data = existing_data
                       data["last_updated"] = get_current_datetime_formatted()
                   
                   # Add session data
                   if time:
+                      print(f"DEBUG: Adding session data for time: {time}")
                       data["sessions"][time] = {
                           "set_index": set_index,
                           "value": value,
@@ -372,6 +388,7 @@ jobs:
                   
                   # Add Modern Internet data if provided
                   if modern_internet_data:
+                      print("DEBUG: Adding Modern Internet data")
                       # Initialize modern_internet if it doesn't exist
                       if "modern_internet" not in data:
                           data["modern_internet"] = {}
@@ -393,15 +410,20 @@ jobs:
                           }
                   
                   # Save updated data to Firebase
+                  print(f"DEBUG: Saving data to Firebase for date: {date}")
+                  print(f"DEBUG: Data to save: {data}")
                   db.child(date).set(data)
                   
                   print(f"Firebase data updated for {date}")
                   return True
               except Exception as e:
                   print(f"Error updating Firebase data: {e}")
+                  import traceback
+                  traceback.print_exc()
                   # Try again with re-authentication
                   try:
                       # Re-initialize Firebase connection
+                      print("DEBUG: Retrying Firebase connection")
                       firebase = pyrebase.initialize_app(firebase_config)
                       db = firebase.database()
                       db.child(date).set(data)
@@ -409,6 +431,8 @@ jobs:
                       return True
                   except Exception as e2:
                       print(f"Error updating Firebase data on retry: {e2}")
+                      import traceback
+                      traceback.print_exc()
                       return False
           
           def main():
