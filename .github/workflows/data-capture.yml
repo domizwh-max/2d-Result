@@ -91,14 +91,14 @@ jobs:
               return myanmar_time
           
           def get_current_date():
-              """Get current date in yyyy-MM-dd format (Myanmar time)"""
+              """Get current date in dd/MM/yyyy format (Myanmar time)"""
               myanmar_time = get_current_time_myanmar()
-              return myanmar_time.strftime('%Y-%m-%d')
+              return myanmar_time.strftime('%d/%m/%Y')
           
           def get_current_datetime_formatted():
               """Get current date and time in a readable format"""
               myanmar_time = get_current_time_myanmar()
-              return myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
+              return myanmar_time.strftime('%d/%m/%Y %H:%M:%S')
           
           def is_morning_capture_time():
               """Check if current time is exactly 12:01 PM Myanmar time"""
@@ -386,7 +386,7 @@ jobs:
               
               # Get current time in Myanmar
               myanmar_time = get_current_time_myanmar()
-              current_time_str = myanmar_time.strftime('%Y-%m-%d %H:%M:%S')
+              current_time_str = myanmar_time.strftime('%d/%m/%Y %H:%M:%S')
               print(f"Current time (Myanmar): {current_time_str}")
               
               # Fetch SET data at exactly 12:01 PM and 4:30 PM
